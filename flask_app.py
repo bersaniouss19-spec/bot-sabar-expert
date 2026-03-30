@@ -5,98 +5,101 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-# Assurez-vous que ces noms correspondent EXACTEMENT à vos variables sur Render
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
 
 def audit_pagespeed(url_a_tester):
-    """Interroge Google PageSpeed Insights pour obtenir le score de performance"""
+    """EXÉCUTION : Analyse technique profonde via Google"""
     url = url_a_tester.strip()
     if not url.startswith("http"):
         url = "https://" + url
-
+    
     endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
     params = {
-        "url": url,
-        "key": PAGESPEED_API_KEY,
-        "category": "PERFORMANCE",
-        "strategy": "mobile" 
+        "url": url, 
+        "key": PAGESPEED_API_KEY, 
+        "category": ["PERFORMANCE", "SEO"], 
+        "strategy": "mobile"
     }
     
     try:
-        # Augmenté à 60s car PageSpeed peut être très lent
-        response = requests.get(endpoint, params=params, timeout=60)
-        response.raise_for_status()
+        response = requests.get(endpoint, params=params, timeout=70)
         data = response.json()
         
-        score = data['lighthouseResult']['categories']['performance']['score'] * 100
-        return f"L'analyse de {url} est terminée, cher ami. Le score de performance est de **{int(score)}/100**. C'est une base de travail intéressante. Sabar digital."
+        # Extraction des données d'exécution
+        lighthouse = data['lighthouseResult']
+        score = lighthouse['categories']['performance']['score'] * 100
+        
+        # Temps de chargement (LCP) et Interactivité (TBT)
+        lcp = lighthouse['audits']['largest-contentful-paint']['displayValue']
+        tbt = lighthouse['audits']['total-blocking-time']['displayValue']
+        
+        return (
+            f"⚔️ **ORDRE D'AUDIT EXÉCUTÉ** ⚔️\n\n"
+            f"Analyse de : {url}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"● **Score Performance** : {int(score)}/100\n"
+            f"● **Chargement (LCP)** : {lcp}\n"
+            f"● **Blocage (TBT)** : {tbt}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"Cher ami, les chiffres parlent. Voici la réalité technique de ce domaine. Sabar digital."
+        )
     except Exception as e:
-        print(f"Erreur PageSpeed : {e}")
-        return "Je n'ai pas pu accéder aux registres de performance de ce site. L'URL est-elle correcte ? Sabar digital."
+        return f"L'exécution a rencontré un obstacle technique. Vérifiez l'URL. Sabar digital."
 
-def expertise_sabar_digital(prompt_utilisateur):
-    """L'intelligence de l'expert Sabar Digital via Groq"""
+def expertise_sabar_digital(prompt):
+    """PAROLE : Conseil stratégique via Groq"""
+    url_groq = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+    
     instructions = (
-        "Tu es l'Expert Sabar Digital. Ton ton est aristocratique, raffiné et accueillant. "
-        "Tu es un maître du copywriting expérimenté. Pour chaque message, apporte "
-        "une solution marketing de haut niveau en utilisant les piliers : "
-        "1. COGNITIF, 2. AFFECTIF, 3. CONATIF. "
+        "Tu es l'Expert Sabar Digital. Ton ton est aristocratique et tranchant. "
+        "Applique les piliers : 1. COGNITIF, 2. AFFECTIF, 3. CONATIF. "
         "Signe toujours : Sabar digital."
     )
-
-    url_groq = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
     
     data = {
         "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {"role": "system", "content": instructions},
-            {"role": "user", "content": prompt_utilisateur}
-        ],
-        "temperature": 0.65
+        "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],
+        "temperature": 0.6
     }
-
     try:
-        response = requests.post(url_groq, headers=headers, json=data, timeout=20)
-        response.raise_for_status()
-        return response.json()['choices'][0]['message']['content']
-    except Exception as e:
-        print(f"Erreur Groq : {e}")
-        return "Toutes mes excuses, cher ami, mais une affaire d'État requiert mon attention immédiate. Sabar digital"
+        res = requests.post(url_groq, headers=headers, json=data, timeout=25)
+        return res.json()['choices'][0]['message']['content']
+    except:
+        return "Une affaire d'État requiert mon attention immédiate. Sabar digital."
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json()
     if data and "message" in data:
         chat_id = data["message"]["chat"]["id"]
-        user_text = data["message"].get("text", "")
+        user_text = data["message"].get("text", "").strip()
 
-        # Détection d'URL simple
-        if "http" in user_text.lower() or ( "." in user_text and "/" in user_text):
-            reponse_finale = audit_pagespeed(user_text)
+        if not user_text:
+            return jsonify({"status": "ok"}), 200
+
+        # DÉTECTION STRICTE : URL seule = ACTION / Texte = PAROLE
+        if "." in user_text and " " not in user_text:
+            # On informe l'utilisateur que l'action est lancée
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                          json={"chat_id": chat_id, "text": "Bien reçu. Je lance l'audit technique de ce pas... ⏳"})
+            
+            reponse = audit_pagespeed(user_text)
         else:
-            reponse_finale = expertise_sabar_digital(user_text)
+            reponse = expertise_sabar_digital(user_text)
 
-        # Envoi de la réponse sur Telegram
-        tel_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        try:
-            requests.post(tel_url, json={"chat_id": chat_id, "text": reponse_finale}, timeout=10)
-        except Exception as e:
-            print(f"Erreur envoi Telegram : {e}")
-
+        # Envoi du résultat final
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={"chat_id": chat_id, "text": reponse})
+    
     return jsonify({"status": "ok"}), 200
 
 @app.route('/')
 def home():
-    return "Sabar Digital est en ligne. Prêt à servir avec distinction. Sabar digital"
+    return "Sabar Digital : Prêt à l'exécution."
 
 if __name__ == '__main__':
-    # Configuration cruciale pour Render
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
- 
