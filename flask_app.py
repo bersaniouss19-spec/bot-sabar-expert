@@ -5,13 +5,13 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
+# Assurez-vous que ces noms correspondent EXACTEMENT à vos variables sur Render
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
 
 def audit_pagespeed(url_a_tester):
     """Interroge Google PageSpeed Insights pour obtenir le score de performance"""
-    # Nettoyage de l'URL au cas où l'utilisateur envoie du texte autour
     url = url_a_tester.strip()
     if not url.startswith("http"):
         url = "https://" + url
@@ -25,8 +25,8 @@ def audit_pagespeed(url_a_tester):
     }
     
     try:
-        # L'audit prend du temps, timeout rallongé à 45s
-        response = requests.get(endpoint, params=params, timeout=45)
+        # Augmenté à 60s car PageSpeed peut être très lent
+        response = requests.get(endpoint, params=params, timeout=60)
         response.raise_for_status()
         data = response.json()
         
@@ -62,10 +62,11 @@ def expertise_sabar_digital(prompt_utilisateur):
     }
 
     try:
-        response = requests.post(url_groq, headers=headers, json=data, timeout=15)
+        response = requests.post(url_groq, headers=headers, json=data, timeout=20)
         response.raise_for_status()
         return response.json()['choices'][0]['message']['content']
     except Exception as e:
+        print(f"Erreur Groq : {e}")
         return "Toutes mes excuses, cher ami, mais une affaire d'État requiert mon attention immédiate. Sabar digital"
 
 @app.route('/webhook', methods=['POST'])
@@ -75,28 +76,27 @@ def webhook():
         chat_id = data["message"]["chat"]["id"]
         user_text = data["message"].get("text", "")
 
-        # --- LOGIQUE DE DÉCISION ---
-        # Si le message contient une URL, on lance l'audit, sinon on discute
-        if "http" in user_text.lower() or "." in user_text:
+        # Détection d'URL simple
+        if "http" in user_text.lower() or ( "." in user_text and "/" in user_text):
             reponse_finale = audit_pagespeed(user_text)
         else:
             reponse_finale = expertise_sabar_digital(user_text)
 
         # Envoi de la réponse sur Telegram
         tel_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(tel_url, json={"chat_id": chat_id, "text": reponse_finale})
+        try:
+            requests.post(tel_url, json={"chat_id": chat_id, "text": reponse_finale}, timeout=10)
+        except Exception as e:
+            print(f"Erreur envoi Telegram : {e}")
 
     return jsonify({"status": "ok"}), 200
-    if __name__ == '__main__':
-    # Render utilise la variable d'environnement PORT
-    port = int(os.environ.get("PORT", 10000)) 
-    app.run(host='0.0.0.0', port=port)
 
 @app.route('/')
 def home():
     return "Sabar Digital est en ligne. Prêt à servir avec distinction. Sabar digital"
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    # Configuration cruciale pour Render
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
  
