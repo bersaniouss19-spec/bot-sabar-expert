@@ -87,6 +87,10 @@ def webhook():
         requests.post(tel_url, json={"chat_id": chat_id, "text": reponse_finale})
 
     return jsonify({"status": "ok"}), 200
+    if __name__ == '__main__':
+    # Render utilise la variable d'environnement PORT
+    port = int(os.environ.get("PORT", 10000)) 
+    app.run(host='0.0.0.0', port=port)
 
 @app.route('/')
 def home():
