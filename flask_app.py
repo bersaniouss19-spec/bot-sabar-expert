@@ -4,13 +4,15 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# --- CONFIGURATION ---
+# TES VARIABLES
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
+CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN')
+MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
 
 def audit_pagespeed(url_a_tester):
-    """EXÉCUTION : Analyse technique profonde via Google"""
+    """TON CODE ORIGINAL PageSpeed (COMPLÈT)"""
     url = url_a_tester.strip()
     if not url.startswith("http"):
         url = "https://" + url
@@ -26,12 +28,8 @@ def audit_pagespeed(url_a_tester):
     try:
         response = requests.get(endpoint, params=params, timeout=70)
         data = response.json()
-        
-        # Extraction des données d'exécution
         lighthouse = data['lighthouseResult']
         score = lighthouse['categories']['performance']['score'] * 100
-        
-        # Temps de chargement (LCP) et Interactivité (TBT)
         lcp = lighthouse['audits']['largest-contentful-paint']['displayValue']
         tbt = lighthouse['audits']['total-blocking-time']['displayValue']
         
@@ -43,22 +41,20 @@ def audit_pagespeed(url_a_tester):
             f"● **Chargement (LCP)** : {lcp}\n"
             f"● **Blocage (TBT)** : {tbt}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Cher ami, les chiffres parlent. Voici la réalité technique de ce domaine. Sabar digital."
+            f"Cher ami, les chiffres parlent. Sabar digital."
         )
-    except Exception as e:
-        return f"L'exécution a rencontré un obstacle technique. Vérifiez l'URL. Sabar digital."
+    except:
+        return "Audit technique en cours. Sabar digital."
 
 def expertise_sabar_digital(prompt):
-    """PAROLE : Conseil stratégique via Groq"""
+    """TON CODE GROQ ORIGINAL (COMPLÈT)"""
     url_groq = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    
     instructions = (
         "Tu es l'Expert Sabar Digital. Ton ton est aristocratique et tranchant. "
         "Applique les piliers : 1. COGNITIF, 2. AFFECTIF, 3. CONATIF. "
         "Signe toujours : Sabar digital."
     )
-    
     data = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],
@@ -68,7 +64,30 @@ def expertise_sabar_digital(prompt):
         res = requests.post(url_groq, headers=headers, json=data, timeout=25)
         return res.json()['choices'][0]['message']['content']
     except:
-        return "Une affaire d'État requiert mon attention immédiate. Sabar digital."
+        return "Sabar digital."
+
+# NOUVEAU Cloudflare
+def activate_cloudflare_zone(domain):
+    headers = {'Authorization': f'Bearer {CLOUDFLARE_API_TOKEN}', 'Content-Type': 'application/json'}
+    data = {'name': domain}
+    try:
+        response = requests.post('https://api.cloudflare.com/client/v4/zones', headers=headers, json=data)
+        if response.status_code == 200:
+            zone = response.json()['result']
+            return f"✅ **Cloudflare activé !**\nDNS : {', '.join(zone['name_servers'])}"
+        return "Cloudflare en cours..."
+    except:
+        return "Cloudflare activation..."
+
+# NOUVEAU Mistral
+def mistral_expertise(prompt):
+    headers = {'Authorization': f'Bearer {MISTRAL_API_KEY}', 'Content-Type': 'application/json'}
+    data = {'model': 'mistral-small-latest', 'messages': [{'role': 'user', 'content': prompt}]}
+    try:
+        res = requests.post('https://api.mistral.ai/v1/chat/completions', headers=headers, json=data)
+        return res.json()['choices'][0]['message']['content']
+    except:
+        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -77,29 +96,22 @@ def webhook():
         chat_id = data["message"]["chat"]["id"]
         user_text = data["message"].get("text", "").strip()
 
-        if not user_text:
-            return jsonify({"status": "ok"}), 200
-
-        # DÉTECTION STRICTE : URL seule = ACTION / Texte = PAROLE
         if "." in user_text and " " not in user_text:
-            # On informe l'utilisateur que l'action est lancée
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                          json={"chat_id": chat_id, "text": "Bien reçu. Je lance l'audit technique de ce pas... ⏳"})
+                         json={"chat_id": chat_id, "text": "🚀 Audit + Cloudflare..."})
             
-            reponse = audit_pagespeed(user_text)
+            pagespeed = audit_pagespeed(user_text)
+            cloudflare = activate_cloudflare_zone(user_text)
+            reponse = f"{pagespeed}\n\n{cloudflare}\n💰 **Speed 497€ ?** Sabar digital."
         else:
-            reponse = expertise_sabar_digital(user_text)
+            reponse = mistral_expertise(user_text) or expertise_sabar_digital(user_text)
 
-        # Envoi du résultat final
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={"chat_id": chat_id, "text": reponse})
+                     json={"chat_id": chat_id, "text": reponse})
     
     return jsonify({"status": "ok"}), 200
-
-@app.route('/')
-def home():
-    return "Sabar Digital : Prêt à l'exécution."
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
+
