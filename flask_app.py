@@ -1,27 +1,3 @@
-import os
-import requests
-import json
-from flask import Flask, request, jsonify, redirect
-from google_auth_oauthlib.flow import Flow
-
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sabar_digital_777')
-
-# CONFIGURATION DES VARIABLES D'ENVIRONNEMENT
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-BLOGGER_BLOG_ID = os.environ.get('BLOGGER_BLOG_ID')
-CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-REDIRECT_URI = "https://bot-sabar-expert.onrender.com/callback"
-SCOPES = ['https://www.googleapis.com/auth/blogger']
-
-access_tokens = {}
-
-@app.route('/')
-def home():
-    return "<h1>Sabar Digital Bot : Opérationnel</h1>"
-
 @app.route('/login')
 def login():
     try:
@@ -34,15 +10,15 @@ def login():
                 "redirect_uris": [REDIRECT_URI]
             }
         }
-        # SOLUTION AU BUG : On initialise le Flow sans PKCE
+        # On force l'utilisation de la méthode 'offline' sans PKCE
         flow = Flow.from_client_config(client_config, scopes=SCOPES)
         flow.redirect_uri = REDIRECT_URI
         
-        # On génère l'URL d'autorisation simple
+        # L'astuce est ici : on ne génère PAS de code_verifier
         auth_url, _ = flow.authorization_url(access_type='offline', prompt='consent')
         return redirect(auth_url)
     except Exception as e:
-        return f"Erreur Configuration Login : {str(e)}"
+        return f"Erreur Login : {str(e)}"
 
 @app.route('/callback')
 def callback():
@@ -56,74 +32,15 @@ def callback():
                 "redirect_uris": [REDIRECT_URI]
             }
         }
-        # On recrée le flow pour valider le retour
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Permet le HTTP si nécessaire (Render gère le HTTPS)
+        # On recrée le flow au retour
         flow = Flow.from_client_config(client_config, scopes=SCOPES)
         flow.redirect_uri = REDIRECT_URI
         
-        # Récupération du jeton final
+        # On récupère le jeton directement depuis l'URL de retour
         flow.fetch_token(authorization_response=request.url)
+        
         access_tokens['current'] = flow.credentials.token
-        return "<h1>Autorisation réussie !</h1><p>Sabar, votre bot peut désormais publier sur Blogger.</p>"
+        return "<h1>Autorisation réussie !</h1><p>Sabar, votre bot est maintenant lié à Blogger.</p>"
     except Exception as e:
-        return f"Erreur lors du callback : {str(e)}"
-
-def publier_sur_blogger(titre, contenu):
-    token = access_tokens.get('current')
-    if not token:
-        return "❌ Erreur : Bot non autorisé. Cliquez d'abord sur /login"
-        
-    url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOGGER_BLOG_ID}/posts"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    payload = {"kind": "blogger#post", "title": titre, "content": contenu}
-    
-    try:
-        res = requests.post(url, headers=headers, json=payload)
-        if res.status_code == 200:
-            return f"✅ Publié ! Lien : {res.json().get('url')}"
-        return f"❌ Erreur Blogger : {res.status_code}"
-    except Exception as e:
-        return f"❌ Erreur technique : {str(e)}"
-
-def expertise_sabar_digital(prompt):
-    url_groq = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-    data = {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {"role": "system", "content": "Tu es l'Expert Sabar Digital. Tu es un maître du copywriting. Signe: Sabar digital."},
-            {"role": "user", "content": prompt}
-        ]
-    }
-    try:
-        res = requests.post(url_groq, headers=headers, json=data, timeout=25)
-        return res.json()['choices'][0]['message']['content']
-    except:
-        return "Sabar digital."
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json()
-    if data and "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        user_text = data["message"].get("text", "").strip()
-        
-        if user_text.lower().startswith("publier :"):
-            try:
-                parts = user_text.replace("publier :", "").split("|")
-                if len(parts) < 2:
-                    reponse = "⚠️ Format : publier : Titre | Contenu"
-                else:
-                    reponse = publier_sur_blogger(parts[0].strip(), parts[1].strip())
-            except:
-                reponse = "❌ Erreur de formatage."
-        else:
-            reponse = expertise_sabar_digital(user_text)
-            
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": reponse})
-        
-    return jsonify({"status": "ok"}), 200
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+        # Si ça échoue encore, ce message nous dira pourquoi
+        return f"Détail de l'erreur callback : {str(e)}"
