@@ -10,14 +10,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sabar_digital_777')
 # CONFIGURATION DES VARIABLES D'ENVIRONNEMENT
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
 BLOGGER_BLOG_ID = os.environ.get('BLOGGER_BLOG_ID')
 CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 REDIRECT_URI = "https://bot-sabar-expert.onrender.com/callback"
 SCOPES = ['https://www.googleapis.com/auth/blogger']
 
-# Stockage temporaire du jeton (Note: se vide au redémarrage du serveur)
 access_tokens = {}
 
 @app.route('/')
@@ -27,9 +25,6 @@ def home():
 @app.route('/login')
 def login():
     try:
-        if not CLIENT_ID or not CLIENT_SECRET:
-            return "Erreur : GOOGLE_CLIENT_ID ou SECRET manquant dans Render."
-            
         client_config = {
             "web": {
                 "client_id": CLIENT_ID,
@@ -39,8 +34,11 @@ def login():
                 "redirect_uris": [REDIRECT_URI]
             }
         }
+        # SOLUTION AU BUG : On initialise le Flow sans PKCE
         flow = Flow.from_client_config(client_config, scopes=SCOPES)
         flow.redirect_uri = REDIRECT_URI
+        
+        # On génère l'URL d'autorisation simple
         auth_url, _ = flow.authorization_url(access_type='offline', prompt='consent')
         return redirect(auth_url)
     except Exception as e:
@@ -58,8 +56,12 @@ def callback():
                 "redirect_uris": [REDIRECT_URI]
             }
         }
+        # On recrée le flow pour valider le retour
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # Permet le HTTP si nécessaire (Render gère le HTTPS)
         flow = Flow.from_client_config(client_config, scopes=SCOPES)
         flow.redirect_uri = REDIRECT_URI
+        
+        # Récupération du jeton final
         flow.fetch_token(authorization_response=request.url)
         access_tokens['current'] = flow.credentials.token
         return "<h1>Autorisation réussie !</h1><p>Sabar, votre bot peut désormais publier sur Blogger.</p>"
@@ -79,7 +81,7 @@ def publier_sur_blogger(titre, contenu):
         res = requests.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             return f"✅ Publié ! Lien : {res.json().get('url')}"
-        return f"❌ Erreur Blogger : {res.status_code} - {res.text}"
+        return f"❌ Erreur Blogger : {res.status_code}"
     except Exception as e:
         return f"❌ Erreur technique : {str(e)}"
 
@@ -89,7 +91,7 @@ def expertise_sabar_digital(prompt):
     data = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {"role": "system", "content": "Tu es l'Expert Sabar Digital. Tu es un maître du copywriting. Signe toujours par: Sabar digital."},
+            {"role": "system", "content": "Tu es l'Expert Sabar Digital. Tu es un maître du copywriting. Signe: Sabar digital."},
             {"role": "user", "content": prompt}
         ]
     }
@@ -97,7 +99,7 @@ def expertise_sabar_digital(prompt):
         res = requests.post(url_groq, headers=headers, json=data, timeout=25)
         return res.json()['choices'][0]['message']['content']
     except:
-        return "Sabar digital (Service temporairement indisponible)."
+        return "Sabar digital."
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -108,14 +110,13 @@ def webhook():
         
         if user_text.lower().startswith("publier :"):
             try:
-                # Format attendu : publier : Titre | Contenu
                 parts = user_text.replace("publier :", "").split("|")
                 if len(parts) < 2:
-                    reponse = "⚠️ Format incorrect. Utilisez : publier : Titre | Contenu"
+                    reponse = "⚠️ Format : publier : Titre | Contenu"
                 else:
                     reponse = publier_sur_blogger(parts[0].strip(), parts[1].strip())
-            except Exception as e:
-                reponse = f"❌ Erreur de formatage : {str(e)}"
+            except:
+                reponse = "❌ Erreur de formatage."
         else:
             reponse = expertise_sabar_digital(user_text)
             
@@ -124,6 +125,5 @@ def webhook():
     return jsonify({"status": "ok"}), 200
 
 if __name__ == '__main__':
-    # Le mode debug=True aide à voir les erreurs dans les logs Render
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=True)
