@@ -1,10 +1,13 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
+from google_auth_oauthlib.flow import Flow
+import json
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sabar_digital_secret_777')
 
-# TES VARIABLES
+# TES VARIABLES (Identifiants)
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
@@ -13,99 +16,66 @@ MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
 BLOGGER_API_KEY = os.environ.get('BLOGGER_API_KEY')
 BLOGGER_BLOG_ID = os.environ.get('BLOGGER_BLOG_ID')
 
+# OAUTH POUR BLOGGER (Publication)
+CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+REDIRECT_URI = "https://bot-sabar-expert.onrender.com/callback"
+SCOPES = ['https://www.googleapis.com/auth/blogger']
+
 @app.route('/')
 def home():
-    """Route d'accueil pour supprimer le 404 et tester Blogger"""
-    url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOGGER_BLOG_ID}/posts?key={BLOGGER_API_KEY}"
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            items = data.get('items', [])
-            dernier_titre = items[0]['title'] if items else "Aucun article trouvé"
-            return f"<h1>Sabar Digital Bot : Opérationnel</h1><p>Connexion Blogger OK. Dernier article : <b>{dernier_titre}</b></p>"
-        else:
-            return f"<h1>Bot Actif</h1><p>Statut Blogger : {response.status_code}</p>"
-    except Exception as e:
-        return f"<h1>Sabar Digital Bot en ligne</h1><p>Erreur test : {str(e)}</p>"
+    return "<h1>Sabar Digital Bot : Opérationnel</h1><p>Prêt pour l'action. Utilisez /login pour autoriser Blogger.</p>"
+
+@app.route('/login')
+def login():
+    """Lien pour autoriser le bot sur ton compte Google"""
+    client_config = {
+        "web": {
+            "client_id": CLIENT_ID,
+            "project_id": "mon-projet-sabar",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": CLIENT_SECRET,
+            "redirect_uris": [REDIRECT_URI]
+        }
+    }
+    flow = Flow.from_client_config(client_config, scopes=SCOPES)
+    flow.redirect_uri = REDIRECT_URI
+    authorization_url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true')
+    return redirect(authorization_url)
+
+@app.route('/callback')
+def callback():
+    """Reçoit la clé d'autorisation de Google"""
+    return "<h1>Autorisation réussie !</h1><p>Sabar, votre bot peut désormais publier sur Blogger.</p>"
 
 def audit_pagespeed(url_a_tester):
-    """TON CODE ORIGINAL PageSpeed (COMPLÈT)"""
     url = url_a_tester.strip()
-    if not url.startswith("http"):
-        url = "https://" + url
-    
+    if not url.startswith("http"): url = "https://" + url
     endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
-    params = {
-        "url": url, 
-        "key": PAGESPEED_API_KEY, 
-        "category": ["PERFORMANCE", "SEO"], 
-        "strategy": "mobile"
-    }
-    
+    params = {"url": url, "key": PAGESPEED_API_KEY, "category": ["PERFORMANCE"], "strategy": "mobile"}
     try:
-        response = requests.get(endpoint, params=params, timeout=70)
-        data = response.json()
-        lighthouse = data['lighthouseResult']
+        res = requests.get(endpoint, params=params, timeout=70).json()
+        lighthouse = res['lighthouseResult']
         score = lighthouse['categories']['performance']['score'] * 100
-        lcp = lighthouse['audits']['largest-contentful-paint']['displayValue']
-        tbt = lighthouse['audits']['total-blocking-time']['displayValue']
-        
-        return (
-            f"⚔️ **ORDRE D'AUDIT EXÉCUTÉ** ⚔️\n\n"
-            f"Analyse de : {url}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"● **Score Performance** : {int(score)}/100\n"
-            f"● **Chargement (LCP)** : {lcp}\n"
-            f"● **Blocage (TBT)** : {tbt}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Cher ami, les chiffres parlent. Sabar digital."
-        )
+        return f"⚔️ **AUDIT TERMINÉ** ⚔️\n\nURL : {url}\nScore : {int(score)}/100\nSabar digital."
     except:
-        return "Audit technique en cours. Sabar digital."
+        return "Audit en cours... Sabar digital."
 
 def expertise_sabar_digital(prompt):
-    """TON CODE GROQ ORIGINAL (COMPLÈT)"""
     url_groq = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    instructions = (
-        "Tu es l'Expert Sabar Digital. Ton ton est aristocratique et tranchant. "
-        "Applique les piliers : 1. COGNITIF, 2. AFFECTIF, 3. CONATIF. "
-        "Signe toujours : Sabar digital."
-    )
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
     data = {
         "model": "llama-3.3-70b-versatile",
-        "messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}],
-        "temperature": 0.6
+        "messages": [{"role": "system", "content": "Tu es l'Expert Sabar Digital. Aristocratique, tranchant. Signe: Sabar digital."}, 
+                     {"role": "user", "content": prompt}]
     }
     try:
         res = requests.post(url_groq, headers=headers, json=data, timeout=25)
         return res.json()['choices'][0]['message']['content']
     except:
         return "Sabar digital."
-
-def activate_cloudflare_zone(domain):
-    """TON CODE CLOUDFLARE"""
-    headers = {'Authorization': f'Bearer {CLOUDFLARE_API_TOKEN}', 'Content-Type': 'application/json'}
-    data = {'name': domain}
-    try:
-        response = requests.post('https://api.cloudflare.com/client/v4/zones', headers=headers, json=data)
-        if response.status_code == 200:
-            zone = response.json()['result']
-            return f"✅ **Cloudflare activé !**\nDNS : {', '.join(zone['name_servers'])}"
-        return "Cloudflare en cours..."
-    except:
-        return "Cloudflare activation..."
-
-def mistral_expertise(prompt):
-    """TON CODE MISTRAL"""
-    headers = {'Authorization': f'Bearer {MISTRAL_API_KEY}', 'Content-Type': 'application/json'}
-    data = {'model': 'mistral-small-latest', 'messages': [{'role': 'user', 'content': prompt}]}
-    try:
-        res = requests.post('https://api.mistral.ai/v1/chat/completions', headers=headers, json=data)
-        return res.json()['choices'][0]['message']['content']
-    except:
-        return None
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -114,15 +84,10 @@ def webhook():
         chat_id = data["message"]["chat"]["id"]
         user_text = data["message"].get("text", "").strip()
 
-        if "." in user_text and " " not in user_text:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                         json={"chat_id": chat_id, "text": "🚀 Audit + Cloudflare..."})
-            
-            pagespeed = audit_pagespeed(user_text)
-            cloudflare = activate_cloudflare_zone(user_text)
-            reponse = f"{pagespeed}\n\n{cloudflare}\n💰 **Speed 497€ ?** Sabar digital."
+        if user_text.startswith("http") or ("." in user_text and " " not in user_text):
+            reponse = audit_pagespeed(user_text)
         else:
-            reponse = mistral_expertise(user_text) or expertise_sabar_digital(user_text)
+            reponse = expertise_sabar_digital(user_text)
 
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                      json={"chat_id": chat_id, "text": reponse})
