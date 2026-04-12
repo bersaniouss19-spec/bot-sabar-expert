@@ -10,6 +10,24 @@ GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 PAGESPEED_API_KEY = os.environ.get('PAGESPEED_API_KEY')
 CLOUDFLARE_API_TOKEN = os.environ.get('CLOUDFLARE_API_TOKEN')
 MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
+BLOGGER_API_KEY = os.environ.get('BLOGGER_API_KEY')
+BLOGGER_BLOG_ID = os.environ.get('BLOGGER_BLOG_ID')
+
+@app.route('/')
+def home():
+    """Route d'accueil pour supprimer le 404 et tester Blogger"""
+    url = f"https://www.googleapis.com/blogger/v3/blogs/{BLOGGER_BLOG_ID}/posts?key={BLOGGER_API_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            items = data.get('items', [])
+            dernier_titre = items[0]['title'] if items else "Aucun article trouvé"
+            return f"<h1>Sabar Digital Bot : Opérationnel</h1><p>Connexion Blogger OK. Dernier article : <b>{dernier_titre}</b></p>"
+        else:
+            return f"<h1>Bot Actif</h1><p>Statut Blogger : {response.status_code}</p>"
+    except Exception as e:
+        return f"<h1>Sabar Digital Bot en ligne</h1><p>Erreur test : {str(e)}</p>"
 
 def audit_pagespeed(url_a_tester):
     """TON CODE ORIGINAL PageSpeed (COMPLÈT)"""
@@ -66,8 +84,8 @@ def expertise_sabar_digital(prompt):
     except:
         return "Sabar digital."
 
-# NOUVEAU Cloudflare
 def activate_cloudflare_zone(domain):
+    """TON CODE CLOUDFLARE"""
     headers = {'Authorization': f'Bearer {CLOUDFLARE_API_TOKEN}', 'Content-Type': 'application/json'}
     data = {'name': domain}
     try:
@@ -79,8 +97,8 @@ def activate_cloudflare_zone(domain):
     except:
         return "Cloudflare activation..."
 
-# NOUVEAU Mistral
 def mistral_expertise(prompt):
+    """TON CODE MISTRAL"""
     headers = {'Authorization': f'Bearer {MISTRAL_API_KEY}', 'Content-Type': 'application/json'}
     data = {'model': 'mistral-small-latest', 'messages': [{'role': 'user', 'content': prompt}]}
     try:
@@ -114,4 +132,3 @@ def webhook():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
