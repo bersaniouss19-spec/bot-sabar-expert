@@ -2,11 +2,11 @@ import os
 import requests
 from flask import Flask, request, jsonify, redirect
 
-# INITIALISATION (L'oubli était ici)
+# --- INITIALISATION ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sabar_777')
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION DES VARIABLES D'ENVIRONNEMENT ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 BLOGGER_BLOG_ID = os.environ.get('BLOGGER_BLOG_ID')
@@ -14,9 +14,10 @@ CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 REDIRECT_URI = "https://bot-sabar-expert.onrender.com/callback"
 
+# Stockage temporaire du token en mémoire
 access_tokens = {}
 
-# --- ROUTES AUTHENTIFICATION ---
+# --- ROUTES D'AUTHENTIFICATION GOOGLE ---
 @app.route('/')
 def home():
     return "<h1>Sabar Digital : Système Opérationnel</h1>"
@@ -60,21 +61,26 @@ def generer_contenu_ia(sujet):
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
     prompt = f"""
-    Tu es Sabar Digital, expert copywriter. Rédige un article SEO sur : {sujet}.
-    Réponds UNIQUEMENT sous ce format strict sans aucun autre texte :
-    TITRE | CORPS_HTML | TAGS | META_DESCRIPTION
+    En tant qu'expert copywriter Sabar Digital, rédige un article SEO sur : {sujet}.
+    Format STRICT (séparé par des |) : TITRE | CONTENU_HTML | TAGS | META_DESCRIPTION
     """
     
     payload = {
         "model": "llama3-8b-8192",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7
+        "temperature": 0.6
     }
     
-    res = requests.post(url, headers=headers, json=payload)
-    return res.json()['choices'][0]['message']['content'].strip()
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=25)
+        res_json = res.json()
+        if 'choices' in res_json:
+            return res_json['choices'][0]['message']['content'].strip()
+        return f"ERREUR_IA: {res.text}"
+    except Exception as e:
+        return f"ERREUR_IA: {str(e)}"
 
-# --- PUBLICATION BLOGGER ---
+# --- PUBLICATION SUR BLOGGER ---
 def publier_sur_blogger(titre, contenu_html, mots_cles, meta_desc):
     token = access_tokens.get('current')
     if not token: return "❌ Non autorisé. Allez sur /login"
@@ -91,7 +97,9 @@ def publier_sur_blogger(titre, contenu_html, mots_cles, meta_desc):
     }
     
     res = requests.post(url, headers=headers, json=payload)
-    return "✅ Article IA publié avec succès !" if res.status_code == 200 else f"❌ Erreur : {res.text}"
+    if res.status_code == 200:
+        return "✅ Article IA publié avec succès !"
+    return f"❌ Erreur Blogger : {res.text}"
 
 # --- WEBHOOK TELEGRAM ---
 @app.route('/webhook', methods=['POST'])
@@ -104,20 +112,28 @@ def webhook():
         if text.startswith("publier_ia :"):
             sujet = text.replace("publier_ia :", "").strip()
             try:
+                # 1. Appel IA
                 bloc_ia = generer_contenu_ia(sujet)
+                
+                # 2. Vérification du format IA
                 if "|" in bloc_ia:
                     parts = bloc_ia.split("|")
                     titre = parts[0].strip()
                     html = parts[1].strip()
                     tags = parts[2].strip() if len(parts) > 2 else "Expertise"
                     meta = parts[3].strip() if len(parts) > 3 else titre
+                    
+                    # 3. Publication
                     reponse = publier_sur_blogger(titre, html, tags, meta)
                 else:
-                    reponse = "⚠️ L'IA n'a pas respecté le format. Réessayez."
+                    reponse = f"⚠️ L'IA a répondu hors format : {bloc_ia[:100]}..."
+                    
             except Exception as e:
-                reponse = f"⚠️ Erreur technique : {str(e)}"
+                reponse = f"⚠️ Erreur système : {str(e)}"
             
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": reponse})
+            # Réponse vers Telegram
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                          json={"chat_id": chat_id, "text": reponse})
             
     return jsonify({"status": "ok"}), 200
 
