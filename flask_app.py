@@ -60,15 +60,18 @@ def generer_contenu_ia(sujet):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     
+    # Prompt optimisé pour éviter le texte inutile avant/après
     prompt = f"""
     En tant qu'expert copywriter Sabar Digital, rédige un article SEO sur : {sujet}.
-    Format STRICT (séparé par des |) : TITRE | CONTENU_HTML | TAGS | META_DESCRIPTION
+    Réponds EXCLUSIVEMENT avec ce format strict, sans introduction ni conclusion :
+    TITRE | CONTENU_HTML | TAGS | META_DESCRIPTION
     """
     
     payload = {
-        "model": "llama3-8b-8192",
+        "model": "llama-3.3-70b-versatile", # Mise à jour du modèle
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.6
+        "temperature": 0.6,
+        "max_tokens": 2000
     }
     
     try:
@@ -120,13 +123,13 @@ def webhook():
                     parts = bloc_ia.split("|")
                     titre = parts[0].strip()
                     html = parts[1].strip()
-                    tags = parts[2].strip() if len(parts) > 2 else "Expertise"
+                    tags = parts[2].strip() if len(parts) > 2 else "Copywriting"
                     meta = parts[3].strip() if len(parts) > 3 else titre
                     
                     # 3. Publication
                     reponse = publier_sur_blogger(titre, html, tags, meta)
                 else:
-                    reponse = f"⚠️ L'IA a répondu hors format : {bloc_ia[:100]}..."
+                    reponse = f"⚠️ L'IA a répondu hors format. Voici sa réponse : {bloc_ia[:200]}"
                     
             except Exception as e:
                 reponse = f"⚠️ Erreur système : {str(e)}"
